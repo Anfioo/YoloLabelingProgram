@@ -1,0 +1,59 @@
+{
+    "open_default_dir": "C:/Users",
+    "classes": [
+        {
+            "label": "Category1",
+            "r": 255,
+            "g": 0,
+            "b": 0
+        },
+        {
+            "label": "Category2",
+            "r": 255,
+            "g": 170,
+            "b": 0
+        },
+        {
+            "label": "Category3",
+            "r": 169,
+            "g": 255,
+            "b": 0
+        },
+        {
+            "label": "Category4",
+            "r": 0,
+            "g": 255,
+            "b": 0
+        },
+        {
+            "label": "Category5",
+            "r": 0,
+            "g": 255,
+            "b": 170
+        },
+        {
+            "label": "Category6",
+            "r": 0,
+            "g": 169,
+            "b": 255
+        },
+        {
+            "label": "Category7",
+            "r": 0,
+            "g": 0,
+            "b": 255
+        },
+        {
+            "label": "Category8",
+            "r": 170,
+            "g": 0,
+            "b": 255
+        },
+        {
+            "label": "Category9",
+            "r": 255,
+            "g": 0,
+            "b": 169
+        }
+    ]
+}

@@ -1,0 +1,9 @@
+{
+    "open_btn": "Ctrl+O",
+    "prev_btn": "Left",
+    "next_btn": "Right",
+    "save_btn": "Ctrl+S",
+    "del_btn": "Ctrl+D",
+    "setting_btn": "Ctrl+I",
+    "class_combo": "Ctrl+Q"
+}
