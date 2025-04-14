@@ -1,19 +1,13 @@
 import sys
 import os
+import random
+import shutil
+import json
+from pathlib import Path
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QLineEdit, QPushButton, QFileDialog, QMessageBox,
                              QGroupBox, QDoubleSpinBox, QTextEdit, QScrollArea)
 from PyQt5.QtCore import Qt, QObject, pyqtSignal
-
-import os
-import random
-import shutil
-import json
-import yaml
-from pathlib import Path
-from tqdm import tqdm
-import io
-import contextlib
 
 from SvgRenderer import get_split_svg_icon, set_svg_icon_from_string
 
@@ -32,7 +26,7 @@ class DatasetSplitApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("数据集分割工具")
-        self.setGeometry(100, 100, 800, 600)  # 增大窗口尺寸以容纳输出区域
+        self.setGeometry(100, 100, 800, 600)
 
         # 创建自定义流并连接信号
         self.stdout_stream = EmittingStream()
@@ -152,19 +146,19 @@ class DatasetSplitApp(QMainWindow):
         main_layout.addWidget(btn_group)
         main_layout.addWidget(output_group)
         main_widget.setLayout(main_layout)
+        set_svg_icon_from_string(self, get_split_svg_icon())
 
         self.setCentralWidget(main_widget)
 
         # 设置默认值（可选）
         self.set_default_values()
-        set_svg_icon_from_string(self, get_split_svg_icon())
 
     def set_default_values(self):
         """设置默认值，方便测试"""
         self.images_dir_edit.setText(r"images")
         self.labels_dir_edit.setText(r"labels")
         self.output_dir_edit.setText("datasets")
-        self.class_mapping_edit.setText(r"class_mapping.txt")
+        self.class_mapping_edit.setText(r"class_mapping.json")
 
     def browse_directory(self, line_edit):
         """浏览目录"""
@@ -225,19 +219,14 @@ class DatasetSplitApp(QMainWindow):
             old_stdout = sys.stdout
             sys.stdout = self.stdout_stream
 
-            # 使用contextlib来捕获tqdm的输出
-            output_buffer = io.StringIO()
-            with contextlib.redirect_stdout(output_buffer):
-                create_dataset_split(
-                    images_dir=self.images_dir_edit.text(),
-                    labels_dir=self.labels_dir_edit.text(),
-                    output_dir=self.output_dir_edit.text(),
-                    val_ratio=self.val_ratio_spin.value(),
-                    class_mapping_file=self.class_mapping_edit.text()
-                )
-
-                # 将缓冲区的输出发送到UI
-                self.stdout_stream.write(output_buffer.getvalue())
+            # 执行数据集分割
+            create_dataset_split(
+                images_dir=self.images_dir_edit.text(),
+                labels_dir=self.labels_dir_edit.text(),
+                output_dir=self.output_dir_edit.text(),
+                val_ratio=self.val_ratio_spin.value(),
+                class_mapping_file=self.class_mapping_edit.text()
+            )
 
             QMessageBox.information(self, "成功", "数据集分割完成！")
         except Exception as e:
@@ -278,6 +267,7 @@ def create_dataset_split(
     CLASS_ORDER = [id_to_class[i] for i in sorted(id_to_class.keys())]
 
     # 创建输出目录结构
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     (Path(output_dir) / "images/train").mkdir(parents=True, exist_ok=True)
     (Path(output_dir) / "images/val").mkdir(parents=True, exist_ok=True)
     (Path(output_dir) / "labels/train").mkdir(parents=True, exist_ok=True)
@@ -285,95 +275,78 @@ def create_dataset_split(
 
     # 获取所有图片并按类别分组
     print("🔍 扫描图片文件中...")
-    class_files = {}
-    for img_file in tqdm(os.listdir(images_dir), desc="处理图片"):
-        if not img_file.lower().endswith(('.png', '.jpg', '.jpeg')):
-            continue
+    image_files = [f for f in os.listdir(images_dir)
+                   if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
 
-        # 从文件名提取类别 (支持 Anger_001.png 和 001_Anger.png 格式)
-        parts = os.path.splitext(img_file)[0].split('_')
-        if parts[0].isdigit():
-            class_name = parts[1]
-        else:
-            class_name = parts[0]
+    print(f"找到 {len(image_files)} 张图片")
 
-        if class_name not in class_to_id:
-            raise ValueError(f"发现未定义的类别: {class_name} (来自文件: {img_file})")
-
-        if class_name not in class_files:
-            class_files[class_name] = []
-        class_files[class_name].append(img_file)
-
-    # 验证所有找到的类别都在映射文件中
-    for class_name in class_files.keys():
-        if class_name not in class_to_id:
-            raise ValueError(f"发现未定义的类别: {class_name}")
-
-    # 按标准顺序重新组织类别
-    ordered_classes = [c for c in CLASS_ORDER if c in class_files]
-    class_stats = {c: 0 for c in ordered_classes}
-
-    print("\n📊 开始分割数据集...")
+    # 随机打乱所有图片
     random.seed(seed)
-    for class_name in tqdm(ordered_classes, desc="处理类别"):
-        files = class_files[class_name]
-        random.shuffle(files)
+    random.shuffle(image_files)
 
-        # 计算验证集数量 (至少保留1张)
-        val_count = max(1, int(len(files) * val_ratio))
-        val_files = files[:val_count]
-        train_files = files[val_count:]
+    # 计算验证集数量
+    val_count = max(1, int(len(image_files) * val_ratio))
+    val_files = image_files[:val_count]
+    train_files = image_files[val_count:]
 
-        class_stats[class_name] = {
-            'train': len(train_files),
-            'val': len(val_files),
-            'total': len(files)
-        }
+    print(f"\n📊 数据集分割:")
+    print(f"训练集: {len(train_files)} 张图片")
+    print(f"验证集: {len(val_files)} 张图片")
 
-        # 使用进度条复制文件
-        for phase, files in [('train', train_files), ('val', val_files)]:
-            for img_file in tqdm(files, desc=f"复制 {class_name} {phase} 文件", leave=False):
-                # 处理图片文件
-                img_path = os.path.join(images_dir, img_file)
-                shutil.copy(img_path, f"{output_dir}/images/{phase}/{img_file}")
+    # 复制训练集文件
+    print("\n正在复制训练集文件...")
+    for img_file in train_files:
+        # 处理图片文件
+        img_path = os.path.join(images_dir, img_file)
+        shutil.copy(img_path, f"{output_dir}/images/train/{img_file}")
 
-                # 处理对应的标签文件
-                label_file = os.path.splitext(img_file)[0] + '.txt'
-                label_path = os.path.join(labels_dir, label_file)
-                if os.path.exists(label_path):
-                    shutil.copy(label_path, f"{output_dir}/labels/{phase}/{label_file}")
+        # 处理对应的标签文件
+        label_file = os.path.splitext(img_file)[0] + '.txt'
+        label_path = os.path.join(labels_dir, label_file)
+        if os.path.exists(label_path):
+            shutil.copy(label_path, f"{output_dir}/labels/train/{label_file}")
 
-    # 创建标准格式的YAML配置文件
-    yaml_content = {
-        'path': str(Path(output_dir).resolve()),
-        'train': 'images/train',
-        'val': 'images/val',
-        'nc': len(ordered_classes),
-        'names': CLASS_ORDER
-    }
+    # 复制验证集文件
+    print("\n正在复制验证集文件...")
+    for img_file in val_files:
+        # 处理图片文件
+        img_path = os.path.join(images_dir, img_file)
+        shutil.copy(img_path, f"{output_dir}/images/val/{img_file}")
 
-    yaml_path = Path(output_dir) / "dataset.yaml"
-    with open(yaml_path, 'w') as f:
-        yaml.dump(yaml_content, f, sort_keys=False, default_flow_style=None)
+        # 处理对应的标签文件
+        label_file = os.path.splitext(img_file)[0] + '.txt'
+        label_path = os.path.join(labels_dir, label_file)
+        if os.path.exists(label_path):
+            shutil.copy(label_path, f"{output_dir}/labels/val/{label_file}")
 
-    # 打印统计信息
+    # 创建数据集配置文件
+    create_dataset_config(output_dir, CLASS_ORDER)
+
     print("\n✅ 数据集分割完成")
-    print(f"📁 输出目录: {output_dir}")
-    print(f"🎯 类别数量: {len(ordered_classes)}")
-    print("\n📊 各类别数量统计:")
-    max_name_len = max(len(c) for c in ordered_classes)
-    for class_name in ordered_classes:
-        stats = class_stats[class_name]
-        print(f"  {class_name.ljust(max_name_len)} : "
-              f"训练集={str(stats['train']).rjust(4)} "
-              f"验证集={str(stats['val']).rjust(4)} "
-              f"总计={str(stats['total']).rjust(4)}")
 
-    print(f"\n📄 YAML配置文件已生成: {yaml_path}")
-    print("🎯 标准格式预览:")
+
+def create_dataset_config(output_dir, class_names):
+    """创建数据集配置文件"""
+    config_content = f"""# 数据集配置文件
+path: {Path(output_dir).resolve()}
+train: images/train
+val: images/val
+test:  # 可选测试集路径
+
+# 类别数量
+nc: {len(class_names)}
+
+# 类别名称
+names: {class_names}
+"""
+
+    config_path = Path(output_dir) / "dataset.yaml"
+    with open(config_path, 'w') as f:
+        f.write(config_content)
+
+    print(f"\n📄 配置文件已生成: {config_path}")
     print("=" * 40)
-    with open(yaml_path) as f:
-        print(f.read())
+    print(config_content)
     print("=" * 40)
 
 
