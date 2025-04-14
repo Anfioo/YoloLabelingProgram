@@ -64,7 +64,7 @@ class ImageSizeCheckerApp(QMainWindow):
         self.folder_path = folder_path
         self.start_time = time.time()
         self._all_ok = False
-        self._c=True
+        self._c = True
         self._checking_completed = False  # 检查是否完成的标志
         self.callbacks = {
             'continue': callbacks.get('continue', lambda: None),
@@ -180,7 +180,7 @@ class ImageSizeCheckerApp(QMainWindow):
             )
             if reply == QMessageBox.Yes:
                 self.callbacks['continue']()
-                self._c=False
+                self._c = False
                 event.accept()
             else:
                 event.ignore()
